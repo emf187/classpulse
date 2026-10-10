@@ -309,7 +309,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             base += Manifest.permission.BLUETOOTH_ADVERTISE
             base += Manifest.permission.BLUETOOTH_CONNECT
         }
-        return base.toArray(emptyArray())
+        return base.toTypedArray()
     }
 
     private fun hasPermissions(): Boolean {
