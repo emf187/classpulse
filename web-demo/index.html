@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClassPulse — Algorithm Demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+  .card { border: 1px solid #ddd; border-radius: 8px; padding: 0.6rem 0.8rem; margin: 0.4rem 0; }
+  .near { border-left: 6px solid #1b6ef3; } .inroom { border-left: 6px solid #35a35a; }
+  .edge { border-left: 6px solid #e0a100; } .out { border-left: 6px solid #d61f2c; background: #fff2f3; }
+  button { padding: 0.5rem 1rem; margin-right: 0.5rem; }
+  h1 { font-size: 1.4rem; } #headcount { font-size: 2rem; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>ClassPulse — Algorithm Demo</h1>
+<p>Same ranging logic as the Android app (<code>DistanceEstimator</code>):
+<code>d = 10 ^ ((TxPower − RSSI) / (10·n))</code>, TxPower −59&nbsp;dBm, n = 2.0.
+Simulated classmates drift; one walks out and gets flagged.</p>
+<p id="headcount">IN ROOM: –</p>
+<p id="nearline"></p>
+<div>
+  <button id="start">Start demo</button>
+  <button id="stop">Stop</button>
+</div>
+<div id="list"></div>
+<script>
+// ---- Mirror of DistanceEstimator.kt ----
+const TX = -59, N = 2.0, OUT_MS = 15000;
+const rawDist = (rssi) => Math.min(20, Math.max(0.1, Math.pow(10, (TX - rssi) / (10 * N))));
+function classify(d, agoMs) {
+  if (d == null || agoMs > OUT_MS) return "OUT_OF_BOUNDS";
+  if (d <= 1.0) return "NEAR";
+  if (d <= 8.0) return "IN_ROOM";
+  return "EDGE";
+}
+class Estimator {
+  constructor() { this.s = null; }
+  update(rssi, moving) {
+    const raw = rawDist(rssi), a = moving ? 0.35 : 0.12;
+    this.s = this.s === null ? raw : a * raw + (1 - a) * this.s;
+    return this.s;
+  }
+}
+// ---- Simulated classroom ----
+let timer = null;
+const peers = [
+  { id: "you", name: "You", rssi: -50, est: new Estimator(), d: 0, seen: Date.now(), self: true },
+  { id: "s0", name: "Ada",  rssi: -55, est: new Estimator(), d: null, seen: Date.now() },
+  { id: "s1", name: "Ben",  rssi: -62, est: new Estimator(), d: null, seen: Date.now() },
+  { id: "s2", name: "Cara", rssi: -70, est: new Estimator(), d: null, seen: Date.now() },
+  { id: "s3", name: "Dan",  rssi: -78, est: new Estimator(), d: null, seen: Date.now() },
+  { id: "s4", name: "Efe",  rssi: -60, est: new Estimator(), d: null, seen: Date.now() },
+];
+const t0 = Date.now();
+function tick() {
+  const now = Date.now(), elapsed = (now - t0) / 1000;
+  for (const p of peers) {
+    if (p.self) { p.d = 0; p.seen = now; p.status = "NEAR"; continue; }
+    const walkOut = p.id === "s3" && elapsed > 25; // Dan leaves after 25 s
+    if (!walkOut) {
+      p.rssi = Math.max(-95, Math.min(-45, p.rssi + (Math.random() * 4 - 2)));
+      p.d = p.est.update(p.rssi, true);
+      p.seen = now;
+    }
+    p.status = classify(p.d, now - p.seen);
+  }
+  const inRoom = peers.filter((p) => p.status !== "OUT_OF_BOUNDS").length;
+  const near = peers.filter((p) => !p.self && p.status === "NEAR").length;
+  document.getElementById("headcount").textContent = "IN ROOM: " + inRoom;
+  document.getElementById("nearline").textContent =
+    "NEAR (≤1 m): " + near + "   •   OUT: " + peers.filter((p) => p.status === "OUT_OF_BOUNDS").length;
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  const order = { NEAR: 0, IN_ROOM: 1, EDGE: 2, OUT_OF_BOUNDS: 3 };
+  [...peers].sort((a, b) => order[a.status] - order[b.status]).forEach((p) => {
+    const div = document.createElement("div");
+    div.className = "card " + (p.status === "OUT_OF_BOUNDS" ? "out"
+      : p.status === "NEAR" ? "near" : p.status === "IN_ROOM" ? "inroom" : "edge");
+    const flag = { NEAR: "● NEAR", IN_ROOM: "○ IN ROOM", EDGE: "◐ EDGE", OUT_OF_BOUNDS: "⚠ OUT OF BOUNDS" }[p.status];
+    const d = p.self ? "—" : (p.d == null ? "?" : p.d.toFixed(1) + " m");
+    div.textContent = `${p.name}  •  ${d}  •  ${flag}  •  ${Math.round((now - p.seen) / 1000)}s ago`;
+    list.appendChild(div);
+  });
+}
+document.getElementById("start").onclick = () => { if (!timer) timer = setInterval(tick, 1000); tick(); };
+document.getElementById("stop").onclick = () => { clearInterval(timer); timer = null; };
+tick();
+</script>
+</body>
+</html>
